@@ -16,10 +16,10 @@
 
 <script type="module">
 import {
-  firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
-  monthKeyOf, dueDateInMonth, paymentKey, loadMe, nextColorSlot,
+  firebaseReady, defaultData, fmtMoney, colorFor, findPerson,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe, uid,
   loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
-  getTheme, applyTheme, setTheme
+  getTheme, applyTheme, setTheme, enforceTwoPeople
 } from './ledger-core.js';
 
 applyTheme(getTheme());
@@ -179,26 +179,7 @@ function render(){
 function peopleOptionsHtml(selectedId){
   return data.people.map(function(p){
     return '<option value="' + p.id + '" ' + (selectedId===p.id ? 'selected':'') + '>' + p.name + '</option>';
-  }).join('') + '<option value="__new__">+ Add a new person</option>';
-}
-
-function attachNewPersonHandler(selectEl, currentId){
-  selectEl.addEventListener('change', function(e){
-    if(e.target.value==='__new__'){
-      var name = prompt('Name of new person:');
-      if(name && name.trim()){
-        var slot = nextColorSlot(data);
-        var person = {id: uid(), name: name.trim(), color: slot};
-        data.people.push(person);
-        saveData(data);
-        var opt = document.createElement('option');
-        opt.value = person.id; opt.textContent = person.name; opt.selected = true;
-        e.target.insertBefore(opt, e.target.lastElementChild);
-      } else {
-        e.target.value = currentId || (data.people[0] ? data.people[0].id : '');
-      }
-    }
-  });
+  }).join('');
 }
 
 function openExpenseForm(extraId){
@@ -228,7 +209,6 @@ function openExpenseForm(extraId){
 
   document.getElementById('x_cancel').onclick = function(){ overlay.remove(); };
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-  attachNewPersonHandler(document.getElementById('x_payer'), editing?editing.payerId:null);
 
   if(document.getElementById('x_delete')){
     document.getElementById('x_delete').onclick = function(){
@@ -334,6 +314,8 @@ async function start(){
   myPersonId = loadMe();
   if(!firebaseReady){ render(); return; }
   data = await loadInitial();
+  enforceTwoPeople(data);
+  await saveData(data);
   render();
   subscribeLive(function(d){
     if(d){ data = d; storageOk = true; } else { storageOk = false; }
