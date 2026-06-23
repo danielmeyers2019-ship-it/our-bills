@@ -96,6 +96,13 @@ export function nextColorSlot(data){
   return null;
 }
 
+export function enforceTwoPeople(data){
+  var daniel = data.people.find(function(p){ return p.name.toLowerCase()==='daniel'; }) || { id:'p-daniel', name:'Daniel', color:'A' };
+  var maddy = data.people.find(function(p){ return p.name.toLowerCase()==='maddy'; }) || { id:'p-maddy', name:'Maddy', color:'B' };
+  daniel.color = 'A'; maddy.color = 'B';
+  data.people = [daniel, maddy];
+}
+
 export async function loadInitial(){
   try{
     var snap = await getDoc(docRef);
