@@ -75,6 +75,7 @@ export function paymentKey(billId, monthKey){ return billId + '|' + monthKey; }
 
 export function loadMe(){ return localStorage.getItem(ME_KEY); }
 export function saveMe(id){ localStorage.setItem(ME_KEY, id); }
+export function clearMe(){ localStorage.removeItem(ME_KEY); }
 
 export const THEME_KEY = 'ledger-theme';
 export function getTheme(){

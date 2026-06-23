@@ -17,7 +17,7 @@
 <script type="module">
 import {
   firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
-  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe, nextColorSlot,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe, clearMe, nextColorSlot,
   loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
   getTheme, applyTheme, setTheme
 } from './ledger-core.js';
@@ -407,7 +407,9 @@ function openSettings(){
   var rows = data.people.map(function(p){
     var c = colorFor(p);
     return '<div class="person-row"><span class="dot" style="background:' + c.main + '"></span>' +
-      '<input data-pid="' + p.id + '" value="' + p.name + '" /></div>';
+      '<input data-pid="' + p.id + '" value="' + p.name + '" />' +
+      '<button class="mini-btn" data-del-person="' + p.id + '" title="Remove person" style="color:var(--red);font-size:16px;">✕</button>' +
+    '</div>';
   }).join('');
 
   var overlay = document.createElement('div');
@@ -429,6 +431,28 @@ function openSettings(){
   document.body.appendChild(overlay);
   document.getElementById('themeToggle').onchange = function(e){ setTheme(e.target.checked ? 'dark' : 'light'); };
   document.getElementById('s_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  overlay.querySelectorAll('[data-del-person]').forEach(function(btn){
+    btn.onclick = function(){
+      var pid = btn.getAttribute('data-del-person');
+      var person = findPerson(data, pid);
+      var billCount = data.bills.filter(function(b){ return b.payerId===pid; }).length;
+      var extraCount = (data.extras||[]).filter(function(e){ return e.payerId===pid; }).length;
+      if(billCount + extraCount > 0){
+        alert(person.name + ' still has ' + billCount + ' bill(s) and ' + extraCount + ' expense(s) assigned. Edit those and change "Who pays" before removing this person.');
+        return;
+      }
+      if(!confirm('Remove ' + person.name + ' from this ledger? This can\'t be undone.')) return;
+      data.people = data.people.filter(function(p){ return p.id !== pid; });
+      var wasMe = (myPersonId === pid);
+      if(wasMe){ myPersonId = null; clearMe(); }
+      saveData(data).then(function(ok){
+        storageOk = ok;
+        overlay.remove();
+        if(wasMe){ ensureIdentity().then(render); } else { render(); }
+      });
+    };
+  });
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
   document.getElementById('s_save').onclick = function(){
     overlay.querySelectorAll('input[data-pid]').forEach(function(input){
