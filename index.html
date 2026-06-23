@@ -6,296 +6,7 @@
 <title>Household Ledger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#EEF1F4;
-    --card:#FFFFFF;
-    --ink:#20283A;
-    --ink-soft:#5C667A;
-    --line:#DDE3EA;
-    --personA:#4B4E8C;
-    --personA-soft:#ECEDF7;
-    --personB:#2C7A7B;
-    --personB-soft:#E6F1F1;
-    --neutral:#7C8595;
-    --neutral-soft:#EEF0F2;
-    --paid:#3E7D52;
-    --paid-soft:#E7F2EA;
-    --amber:#B9842B;
-    --amber-soft:#FBF1DF;
-    --red:#C0392B;
-    --red-soft:#FBE9E7;
-    --radius:14px;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; padding:0;}
-  body{
-    background:var(--bg);
-    color:var(--ink);
-    font-family:'Inter',system-ui,sans-serif;
-    min-height:100vh;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{
-    max-width:560px;
-    margin:0 auto;
-    padding:20px 16px 96px;
-  }
-  .eyebrow{
-    font-family:'IBM Plex Mono',monospace;
-    font-size:11px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--ink-soft);
-    margin:0 0 6px;
-  }
-  h1{
-    font-family:'Space Grotesk',sans-serif;
-    font-weight:700;
-    font-size:30px;
-    margin:0 0 2px;
-    letter-spacing:-0.01em;
-  }
-  .sub{
-    color:var(--ink-soft);
-    font-size:14px;
-    margin:0 0 20px;
-    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-  }
-  .sub button{
-    background:none;border:none;color:var(--ink-soft);
-    text-decoration:underline; font:inherit; cursor:pointer; padding:0;
-  }
-  .live-dot{
-    width:7px;height:7px;border-radius:50%;background:var(--paid);
-    display:inline-block; flex-shrink:0;
-    box-shadow:0 0 0 0 rgba(62,125,82,.5);
-    animation:pulse 2s infinite;
-  }
-  @keyframes pulse{
-    0%{box-shadow:0 0 0 0 rgba(62,125,82,.45);}
-    70%{box-shadow:0 0 0 6px rgba(62,125,82,0);}
-    100%{box-shadow:0 0 0 0 rgba(62,125,82,0);}
-  }
-
-  /* tally row */
-  .tally-row{
-    display:flex;
-    gap:0;
-    align-items:stretch;
-    margin-bottom:14px;
-    border-radius:var(--radius);
-    overflow:hidden;
-    border:1px solid var(--line);
-    background:var(--card);
-  }
-  .tally-chip{
-    flex:1;
-    padding:14px 16px;
-    position:relative;
-  }
-  .tally-chip + .tally-chip{
-    border-left:1px dashed var(--line);
-  }
-  .tally-name{
-    font-family:'Space Grotesk',sans-serif;
-    font-weight:600;
-    font-size:15px;
-    display:flex; align-items:center; gap:6px;
-    margin-bottom:6px;
-  }
-  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
-  .tally-amt{
-    font-family:'IBM Plex Mono',monospace;
-    font-size:15px;
-    font-weight:600;
-  }
-  .tally-amt .of{
-    color:var(--ink-soft);
-    font-weight:500;
-    font-size:13px;
-  }
-  .merge-label{
-    text-align:center;
-    font-size:11px;
-    color:var(--ink-soft);
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    margin:2px 0 16px;
-    font-family:'IBM Plex Mono',monospace;
-  }
-  .merge-label::before{content:"⌄ ";}
-
-  /* reminder banner */
-  .banner{
-    border-radius:var(--radius);
-    padding:14px 16px;
-    margin-bottom:16px;
-    font-size:14px;
-    font-weight:600;
-    display:flex; align-items:center; gap:10px;
-  }
-  .banner.alert{ background:var(--red-soft); color:var(--red); }
-  .banner.calm{ background:var(--paid-soft); color:var(--paid); }
-  .banner.setup{ background:var(--amber-soft); color:var(--amber); }
-
-  /* filters */
-  .filters{
-    display:flex; gap:8px; overflow-x:auto;
-    margin-bottom:16px; padding-bottom:2px;
-  }
-  .filters::-webkit-scrollbar{display:none;}
-  .filter-btn{
-    font-family:'Inter',sans-serif;
-    font-size:13px; font-weight:600;
-    padding:8px 14px;
-    border-radius:999px;
-    border:1px solid var(--line);
-    background:var(--card);
-    color:var(--ink-soft);
-    cursor:pointer;
-    white-space:nowrap;
-    flex-shrink:0;
-  }
-  .filter-btn.active{
-    background:var(--ink);
-    color:#fff;
-    border-color:var(--ink);
-  }
-
-  .list-head{
-    display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:10px;
-  }
-  .list-head span{
-    font-family:'IBM Plex Mono',monospace;
-    font-size:11px;
-    letter-spacing:.1em;
-    text-transform:uppercase;
-    color:var(--ink-soft);
-  }
-  .add-btn{
-    font-family:'Inter',sans-serif;
-    font-weight:700;
-    font-size:13px;
-    background:var(--ink);
-    color:#fff;
-    border:none;
-    border-radius:999px;
-    padding:9px 16px;
-    cursor:pointer;
-    display:flex; align-items:center; gap:6px;
-  }
-
-  .bill-card{
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:var(--radius);
-    margin-bottom:10px;
-    display:flex;
-    overflow:hidden;
-  }
-  .bar{ width:5px; flex-shrink:0; }
-  .bill-body{ flex:1; padding:13px 14px; }
-  .bill-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
-  .bill-name{ font-weight:600; font-size:15px; margin:0 0 3px; }
-  .bill-meta{ font-size:12.5px; color:var(--ink-soft); display:flex; gap:8px; flex-wrap:wrap; }
-  .bill-amt{
-    font-family:'IBM Plex Mono',monospace;
-    font-weight:600; font-size:16px;
-    white-space:nowrap;
-  }
-  .bill-bottom{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
-  .pill{
-    font-size:11px; font-weight:700; letter-spacing:.03em;
-    padding:4px 9px; border-radius:999px; text-transform:uppercase;
-  }
-  .pill.overdue{ background:var(--red-soft); color:var(--red); }
-  .pill.due-soon{ background:var(--amber-soft); color:var(--amber); }
-  .pill.upcoming{ background:var(--neutral-soft); color:var(--neutral); }
-  .pill.paid{ background:var(--paid-soft); color:var(--paid); }
-  .action-row{ display:flex; gap:8px; }
-  .mini-btn{
-    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600;
-    border:none; background:none; color:var(--ink-soft); cursor:pointer;
-    padding:6px 4px;
-  }
-  .mark-paid-btn{
-    font-family:'Inter',sans-serif; font-size:13px; font-weight:700;
-    background:var(--paid); color:#fff; border:none;
-    border-radius:999px; padding:7px 14px; cursor:pointer;
-  }
-  .undo-btn{
-    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600;
-    background:none; color:var(--ink-soft); border:1px solid var(--line);
-    border-radius:999px; padding:6px 12px; cursor:pointer;
-  }
-
-  .empty{
-    text-align:center; padding:48px 16px; color:var(--ink-soft); font-size:14px;
-  }
-
-  /* modal */
-  .overlay{
-    position:fixed; inset:0; background:rgba(32,40,58,.45);
-    display:flex; align-items:flex-end; justify-content:center;
-    z-index:50; padding:0;
-  }
-  .sheet{
-    background:#fff; width:100%; max-width:560px;
-    border-radius:20px 20px 0 0;
-    padding:22px 18px 28px;
-    max-height:88vh; overflow-y:auto;
-  }
-  .sheet h2{
-    font-family:'Space Grotesk',sans-serif; font-size:20px; margin:0 0 16px;
-  }
-  .field{ margin-bottom:14px; }
-  .field label{
-    display:block; font-size:12.5px; font-weight:600; color:var(--ink-soft);
-    margin-bottom:5px; letter-spacing:.02em;
-  }
-  .field input, .field select{
-    width:100%; font-family:'Inter',sans-serif; font-size:15px;
-    padding:11px 12px; border:1px solid var(--line); border-radius:10px;
-    background:#FAFBFC; color:var(--ink);
-  }
-  .field input:focus, .field select:focus{ outline:2px solid var(--personA); }
-  .two-col{ display:flex; gap:10px; }
-  .two-col .field{ flex:1; }
-  .sheet-actions{ display:flex; gap:10px; margin-top:18px; }
-  .btn-primary{
-    flex:1; background:var(--ink); color:#fff; border:none; border-radius:10px;
-    padding:13px; font-weight:700; font-size:15px; cursor:pointer;
-  }
-  .btn-secondary{
-    background:none; border:1px solid var(--line); border-radius:10px;
-    padding:13px 16px; font-weight:600; font-size:15px; cursor:pointer; color:var(--ink-soft);
-  }
-  .btn-danger{
-    background:none; border:1px solid var(--red-soft); color:var(--red);
-    border-radius:10px; padding:13px 16px; font-weight:600; font-size:14px; cursor:pointer;
-  }
-  .gear{
-    position:fixed; top:18px; right:18px; background:var(--card);
-    border:1px solid var(--line); border-radius:50%; width:38px; height:38px;
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-    font-size:16px; z-index:10;
-  }
-  .person-row{
-    display:flex; align-items:center; gap:8px; margin-bottom:10px;
-  }
-  .person-row input{ flex:1; }
-  .notice{
-    font-size:12.5px; color:var(--ink-soft); background:var(--neutral-soft);
-    border-radius:8px; padding:9px 11px; margin-top:4px;
-  }
-  .loading{ text-align:center; padding:60px 0; color:var(--ink-soft); font-size:14px; }
-  code.inline{
-    background:var(--neutral-soft); padding:2px 6px; border-radius:6px;
-    font-family:'IBM Plex Mono',monospace; font-size:13px;
-  }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="gear" id="gearBtn" title="Settings">⚙</div>
@@ -304,142 +15,35 @@
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+import {
+  firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe, nextColorSlot,
+  loadInitial, saveData, subscribeLive
+} from './ledger-core.js';
 
-/* =========================================================================
-   STEP 1 — paste your Firebase config below.
-   Firebase console → Project settings (gear icon) → General tab →
-   "Your apps" → the </> web app → copy the firebaseConfig object here.
-   ========================================================================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyBCAxCmis-RNhwDYeOazhQhCGV9xXMkr2I",
-  authDomain: "household-ledger-b976e.firebaseapp.com",
-  projectId: "household-ledger-b976e",
-  storageBucket: "household-ledger-b976e.firebasestorage.app",
-  messagingSenderId: "818913730005",
-  appId: "1:818913730005:web:3b122dc79109e32591b15c"
-};
-
-var firebaseReady = firebaseConfig.apiKey !== "YOUR_API_KEY";
-var db, docRef;
-if (firebaseReady) {
-  var fbApp = initializeApp(firebaseConfig);
-  db = getFirestore(fbApp);
-  docRef = doc(db, "ledger", "household");
-}
-
-var ME_KEY = 'ledger-my-person-id';
 var storageOk = true;
 var activeFilter = 'all';
 var myPersonId = null;
-
-var data = {
-  people: [
-    { id: 'p-daniel', name: 'Daniel', color: 'A' },
-    { id: 'p-maddy', name: 'Maddy', color: 'B' }
-  ],
-  bills: [
-    { id: 'b-aaa', name: 'AAA', amount: 339.23, dueDay: 4, payerId: 'p-daniel' },
-    { id: 'b-utilities', name: 'Utilities', amount: 142.79, dueDay: 18, payerId: 'p-daniel' },
-    { id: 'b-creditcard', name: 'Credit card', amount: 60, dueDay: 13, payerId: 'p-daniel' },
-    { id: 'b-car-d', name: 'Car', amount: 412.02, dueDay: 26, payerId: 'p-daniel' },
-    { id: 'b-frontier', name: 'Frontier', amount: 62, dueDay: 26, payerId: 'p-daniel' },
-    { id: 'b-rent', name: 'Rent', amount: 2598, dueDay: 30, payerId: 'p-daniel' },
-    { id: 'b-saliemae', name: 'Salie Mae', amount: 370, dueDay: 30, payerId: 'p-daniel' },
-    { id: 'b-nelnet', name: 'nelnet', amount: 320, dueDay: 30, payerId: 'p-daniel' },
-    { id: 'b-school', name: 'school', amount: 365, dueDay: 15, payerId: 'p-maddy' },
-    { id: 'b-carpayment', name: 'car payment', amount: 445, dueDay: 15, payerId: 'p-maddy' },
-    { id: 'b-carinsurance', name: 'Car insurance', amount: 215, dueDay: 15, payerId: 'p-maddy' },
-    { id: 'b-medicine', name: 'Medicine', amount: 275, dueDay: 10, payerId: 'p-maddy' },
-    { id: 'b-vet', name: 'Vet', amount: 175, dueDay: 10, payerId: 'p-maddy' }
-  ],
-  payments: {}
-};
+var data = defaultData();
 
 var app = document.getElementById('app');
-var monthKey = (function(){
-  var d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-})();
-var monthLabel = new Date().toLocaleString('default', {month:'long', year:'numeric'});
-var today = new Date(); today.setHours(0,0,0,0);
-
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function fmtMoney(n){ return '$' + Number(n).toFixed(2).replace(/\.00$/, ''); }
-function colorFor(person){
-  if(!person) return {main:'var(--neutral)', soft:'var(--neutral-soft)'};
-  if(person.color==='A') return {main:'var(--personA)', soft:'var(--personA-soft)'};
-  if(person.color==='B') return {main:'var(--personB)', soft:'var(--personB-soft)'};
-  return {main:'var(--neutral)', soft:'var(--neutral-soft)'};
-}
-function findPerson(id){ return data.people.find(function(p){return p.id===id;}); }
-
-function dueDateThisMonth(dueDay){
-  var y = today.getFullYear(), m = today.getMonth();
-  var lastDay = new Date(y, m+1, 0).getDate();
-  var day = Math.min(dueDay, lastDay);
-  return new Date(y, m, day);
-}
-
-function paymentKey(billId){ return billId + '|' + monthKey; }
+var todayDate = new Date(); todayDate.setHours(0,0,0,0);
+var monthKey = monthKeyOf(todayDate);
+var monthLabel = todayDate.toLocaleString('default', {month:'long', year:'numeric'});
 
 function statusFor(bill){
-  var p = data.payments[paymentKey(bill.id)];
+  var p = data.payments[paymentKey(bill.id, monthKey)];
   if(p && p.paid) return 'paid';
-  var due = dueDateThisMonth(bill.dueDay);
-  var diffDays = Math.round((due - today) / 86400000);
+  var due = dueDateInMonth(bill.dueDay, todayDate.getFullYear(), todayDate.getMonth());
+  var diffDays = Math.round((due - todayDate) / 86400000);
   if(diffDays < 0) return 'overdue';
   if(diffDays <= 5) return 'due-soon';
   return 'upcoming';
 }
 
-function loadMe(){ myPersonId = localStorage.getItem(ME_KEY); }
-function saveMe(){ localStorage.setItem(ME_KEY, myPersonId); }
-
-async function loadInitial(){
-  try{
-    var snap = await getDoc(docRef);
-    if(snap.exists()){
-      data = snap.data();
-      if(!data.payments) data.payments = {};
-      if(!data.people) data.people = [];
-      if(!data.bills) data.bills = [];
-    } else {
-      await setDoc(docRef, data);
-    }
-  }catch(e){ storageOk = false; }
-}
-
-async function saveData(){
-  try{
-    await setDoc(docRef, data);
-  }catch(e){ storageOk = false; }
-  return true;
-}
-
-function subscribeLive(){
-  onSnapshot(docRef, function(snap){
-    if(snap.exists()){
-      data = snap.data();
-      if(!data.payments) data.payments = {};
-      render();
-    }
-  }, function(){ storageOk = false; render(); });
-}
-
-function nextColorSlot(){
-  var used = data.people.map(function(p){return p.color;});
-  if(used.indexOf('A')===-1) return 'A';
-  if(used.indexOf('B')===-1) return 'B';
-  return null;
-}
-
 function ensureIdentity(){
-  if(myPersonId && findPerson(myPersonId)) return Promise.resolve();
-  return new Promise(function(resolve){
-    renderNamePrompt(resolve);
-  });
+  if(myPersonId && findPerson(data, myPersonId)) return Promise.resolve();
+  return new Promise(function(resolve){ renderNamePrompt(resolve); });
 }
 
 function renderNamePrompt(resolve){
@@ -458,13 +62,13 @@ function renderNamePrompt(resolve){
     if(existing){
       myPersonId = existing.id;
     } else {
-      var slot = nextColorSlot();
+      var slot = nextColorSlot(data);
       var person = { id: uid(), name: val, color: slot };
       data.people.push(person);
       myPersonId = person.id;
     }
-    saveMe();
-    saveData().then(resolve);
+    saveMe(myPersonId);
+    saveData(data).then(resolve);
   };
   document.getElementById('nameInput').addEventListener('keydown', function(e){
     if(e.key==='Enter') document.getElementById('nameSaveBtn').click();
@@ -509,7 +113,7 @@ function renderSetupNeeded(){
     '<div style="padding-top:50px;">' +
       '<p class="eyebrow">SETUP NEEDED</p>' +
       '<h1>Connect your Firebase project</h1>' +
-      '<p class="sub">Open this file in a code editor and find the <code class="inline">firebaseConfig</code> object near the top of the script. Paste in your project\'s config values there, save, and reload this page.</p>' +
+      '<p class="sub">Open ledger-core.js and paste your Firebase config values in, then reload.</p>' +
     '</div>';
 }
 
@@ -521,10 +125,11 @@ function render(){
   var dueSoonCount = data.bills.filter(function(b){return statusFor(b)==='due-soon';}).length;
 
   var html = '';
+  html += '<div class="page-nav"><a class="active" href="index.html">Ledger</a><a href="history.html">History</a></div>';
   html += '<p class="eyebrow">HOUSEHOLD LEDGER</p>';
   html += '<h1>' + monthLabel + '</h1>';
   html += '<p class="sub"><span class="live-dot"></span>Synced live' +
-           (myPersonId && findPerson(myPersonId) ? ' &middot; Signed in as ' + findPerson(myPersonId).name : '') +
+           (myPersonId && findPerson(data, myPersonId) ? ' &middot; Signed in as ' + findPerson(data, myPersonId).name : '') +
            ' &middot; <button id="editNameLink">change</button></p>';
 
   if(people.length){
@@ -566,10 +171,10 @@ function render(){
     html += '<div class="empty">No bills yet. Tap "Add bill" to start tracking rent, utilities, subscriptions and more.</div>';
   } else {
     bills.forEach(function(b){
-      var person = findPerson(b.payerId);
+      var person = findPerson(data, b.payerId);
       var c = colorFor(person);
       var status = statusFor(b);
-      var due = dueDateThisMonth(b.dueDay);
+      var due = dueDateInMonth(b.dueDay, todayDate.getFullYear(), todayDate.getMonth());
       var dueStr = due.toLocaleDateString('default', {month:'short', day:'numeric'});
       var statusLabel = {overdue:'Overdue', 'due-soon':'Due soon', upcoming:'Upcoming', paid:'Paid'}[status];
 
@@ -628,14 +233,14 @@ function bindEvents(){
 }
 
 function markPaid(billId, paid){
-  data.payments[paymentKey(billId)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
-  saveData().then(render);
+  data.payments[paymentKey(billId, monthKey)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
+  saveData(data).then(function(ok){ storageOk = ok; render(); });
 }
 
 function deleteBill(billId){
   if(!confirm('Delete this bill? This removes it for everyone.')) return;
   data.bills = data.bills.filter(function(b){ return b.id !== billId; });
-  saveData().then(render);
+  saveData(data).then(function(ok){ storageOk = ok; render(); });
 }
 
 function openBillForm(billId){
@@ -670,10 +275,10 @@ function openBillForm(billId){
     if(e.target.value==='__new__'){
       var name = prompt('Name of new person:');
       if(name && name.trim()){
-        var slot = nextColorSlot();
+        var slot = nextColorSlot(data);
         var person = {id: uid(), name: name.trim(), color: slot};
         data.people.push(person);
-        saveData();
+        saveData(data);
         var opt = document.createElement('option');
         opt.value = person.id; opt.textContent = person.name; opt.selected = true;
         e.target.insertBefore(opt, e.target.lastElementChild);
@@ -706,7 +311,7 @@ function openBillForm(billId){
     } else {
       data.bills.push({ id: uid(), name: name, amount: amount, dueDay: day, payerId: payerId, createdAt: new Date().toISOString() });
     }
-    saveData().then(function(){ overlay.remove(); render(); });
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
   };
 }
 
@@ -735,25 +340,25 @@ function openSettings(){
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
   document.getElementById('s_save').onclick = function(){
     overlay.querySelectorAll('input[data-pid]').forEach(function(input){
-      var p = findPerson(input.getAttribute('data-pid'));
+      var p = findPerson(data, input.getAttribute('data-pid'));
       if(p && input.value.trim()) p.name = input.value.trim();
     });
-    saveData().then(function(){ overlay.remove(); render(); });
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
   };
 }
 
 document.getElementById('gearBtn').addEventListener('click', openSettings);
 
 async function start(){
-  loadMe();
-  if(!firebaseReady){
-    render();
-    return;
-  }
-  await loadInitial();
+  myPersonId = loadMe();
+  if(!firebaseReady){ render(); return; }
+  data = await loadInitial();
   await ensureIdentity();
   render();
-  subscribeLive();
+  subscribeLive(function(d){
+    if(d){ data = d; storageOk = true; } else { storageOk = false; }
+    render();
+  });
 }
 start();
 </script>

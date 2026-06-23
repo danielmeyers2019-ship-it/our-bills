@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Bill History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="loading">Loading history…</div>
+</div>
+
+<script type="module">
+import {
+  firebaseReady, defaultData, fmtMoney, colorFor, findPerson,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe,
+  loadInitial, saveData, subscribeLive
+} from './ledger-core.js';
+
+var data = defaultData();
+var storageOk = true;
+var myPersonId = null;
+var activeFilter = 'all';
+
+// Default to last month, since this is a "history" view.
+var viewDate = new Date();
+viewDate.setDate(1);
+viewDate.setMonth(viewDate.getMonth() - 1);
+
+var app = document.getElementById('app');
+
+function currentMonthKey(){
+  var d = new Date(); d.setDate(1);
+  return monthKeyOf(d);
+}
+
+function isViewingCurrentMonth(){
+  return monthKeyOf(viewDate) === currentMonthKey();
+}
+
+function billExistedInViewedMonth(bill){
+  if(!bill.createdAt) return true;
+  var created = new Date(bill.createdAt);
+  return created.getFullYear() < viewDate.getFullYear() ||
+    (created.getFullYear() === viewDate.getFullYear() && created.getMonth() <= viewDate.getMonth());
+}
+
+function statusFor(bill){
+  var mk = monthKeyOf(viewDate);
+  var p = data.payments[paymentKey(bill.id, mk)];
+  return (p && p.paid) ? 'paid' : 'unpaid';
+}
+
+function distinctPayers(){
+  var ids = {};
+  data.bills.forEach(function(b){ ids[b.payerId]=true; });
+  return data.people.filter(function(p){ return ids[p.id]; });
+}
+
+function visibleBills(){
+  var list = data.bills.filter(billExistedInViewedMonth);
+  if(activeFilter==='unpaid'){
+    list = list.filter(function(b){ return statusFor(b)!=='paid'; });
+  } else if(activeFilter!=='all'){
+    list = list.filter(function(b){ return b.payerId===activeFilter; });
+  }
+  list.sort(function(a,b){ return a.dueDay - b.dueDay; });
+  return list;
+}
+
+function summaryFor(person){
+  var assigned=0, paid=0;
+  data.bills.filter(billExistedInViewedMonth).forEach(function(b){
+    if(b.payerId===person.id){
+      assigned += Number(b.amount);
+      if(statusFor(b)==='paid') paid += Number(b.amount);
+    }
+  });
+  return {assigned:assigned, paid:paid};
+}
+
+function renderSetupNeeded(){
+  app.innerHTML =
+    '<div style="padding-top:50px;">' +
+      '<p class="eyebrow">SETUP NEEDED</p>' +
+      '<h1>Connect your Firebase project</h1>' +
+      '<p class="sub">Open ledger-core.js and paste your Firebase config values in, then reload.</p>' +
+    '</div>';
+}
+
+function render(){
+  if(!firebaseReady){ renderSetupNeeded(); return; }
+
+  var monthLabel = viewDate.toLocaleString('default', {month:'long', year:'numeric'});
+  var bills = visibleBills();
+
+  var html = '';
+  html += '<div class="page-nav"><a href="index.html">Ledger</a><a class="active" href="history.html">History</a></div>';
+  html += '<p class="eyebrow">BILL HISTORY</p>';
+  html += '<h1>Past months</h1>';
+  html += '<p class="sub">Browse what was paid and unpaid in any month.</p>';
+
+  html += '<div class="month-switcher">' +
+    '<button class="month-nav-btn" id="prevMonth">‹</button>' +
+    '<div><div class="month-label">' + monthLabel + '</div>' +
+    (isViewingCurrentMonth() ? '<button class="jump-now" disabled style="opacity:.4;cursor:default;">Current month</button>' : '<button class="jump-now" id="jumpNow">Jump to current month</button>') +
+    '</div>' +
+    '<button class="month-nav-btn" id="nextMonth">›</button>' +
+  '</div>';
+
+  if(data.people.length){
+    html += '<div class="tally-row">';
+    data.people.slice(0,2).forEach(function(p){
+      var c = colorFor(p);
+      var s = summaryFor(p);
+      html += '<div class="tally-chip">' +
+        '<div class="tally-name"><span class="dot" style="background:'+c.main+'"></span>' + p.name + '</div>' +
+        '<div class="tally-amt">' + fmtMoney(s.paid) + ' <span class="of">of ' + fmtMoney(s.assigned) + ' paid</span></div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div class="filters">';
+  html += '<button class="filter-btn ' + (activeFilter==='all'?'active':'') + '" data-filter="all">All</button>';
+  distinctPayers().forEach(function(p){
+    html += '<button class="filter-btn ' + (activeFilter===p.id?'active':'') + '" data-filter="' + p.id + '">' + p.name + '</button>';
+  });
+  html += '<button class="filter-btn ' + (activeFilter==='unpaid'?'active':'') + '" data-filter="unpaid">Unpaid</button>';
+  html += '</div>';
+
+  html += '<div class="list-head"><span>' + bills.length + ' bill' + (bills.length===1?'':'s') + '</span></div>';
+
+  if(!bills.length){
+    html += '<div class="empty">No bills existed yet for this month.</div>';
+  } else {
+    bills.forEach(function(b){
+      var person = findPerson(data, b.payerId);
+      var c = colorFor(person);
+      var status = statusFor(b);
+      var due = dueDateInMonth(b.dueDay, viewDate.getFullYear(), viewDate.getMonth());
+      var dueStr = due.toLocaleDateString('default', {month:'short', day:'numeric'});
+
+      html += '<div class="bill-card">' +
+        '<div class="bar" style="background:' + c.main + '"></div>' +
+        '<div class="bill-body">' +
+          '<div class="bill-top">' +
+            '<div><p class="bill-name">' + b.name + '</p>' +
+              '<div class="bill-meta"><span>Due ' + dueStr + '</span><span>&middot;</span><span>' + (person?person.name:'Unassigned') + '</span></div></div>' +
+            '<div class="bill-amt">' + fmtMoney(b.amount) + '</div>' +
+          '</div>' +
+          '<div class="bill-bottom">' +
+            '<span class="pill ' + status + '">' + (status==='paid' ? 'Paid' : 'Unpaid') + '</span>' +
+            (status==='paid'
+              ? '<button class="undo-btn" data-action="undo" data-id="' + b.id + '">Undo</button>'
+              : '<button class="mark-paid-btn" data-action="markpaid" data-id="' + b.id + '">Mark paid</button>') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+
+  if(!storageOk){
+    html += '<div class="notice">Changes aren\'t syncing right now — check your connection and reload.</div>';
+  }
+
+  app.innerHTML = html;
+  bindEvents();
+}
+
+function bindEvents(){
+  document.getElementById('prevMonth').onclick = function(){
+    viewDate.setMonth(viewDate.getMonth() - 1);
+    render();
+  };
+  document.getElementById('nextMonth').onclick = function(){
+    viewDate.setMonth(viewDate.getMonth() + 1);
+    render();
+  };
+  var jumpNow = document.getElementById('jumpNow');
+  if(jumpNow) jumpNow.onclick = function(){
+    viewDate = new Date(); viewDate.setDate(1);
+    render();
+  };
+  document.querySelectorAll('.filter-btn').forEach(function(btn){
+    btn.onclick = function(){ activeFilter = btn.getAttribute('data-filter'); render(); };
+  });
+  document.querySelectorAll('[data-action]').forEach(function(el){
+    el.onclick = function(){
+      var action = el.getAttribute('data-action');
+      var id = el.getAttribute('data-id');
+      markPaid(id, action==='markpaid');
+    };
+  });
+}
+
+function markPaid(billId, paid){
+  var mk = monthKeyOf(viewDate);
+  data.payments[paymentKey(billId, mk)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
+  saveData(data).then(function(ok){ storageOk = ok; render(); });
+}
+
+async function start(){
+  myPersonId = loadMe();
+  if(!firebaseReady){ render(); return; }
+  data = await loadInitial();
+  render();
+  subscribeLive(function(d){
+    if(d){ data = d; storageOk = true; } else { storageOk = false; }
+    render();
+  });
+}
+start();
+</script>
+</body>
+</html>
