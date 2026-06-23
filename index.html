@@ -6,7 +6,7 @@
 <title>Household Ledger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <div class="gear" id="gearBtn" title="Settings">⚙</div>
@@ -17,9 +17,9 @@
 <script type="module">
 import {
   firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
-  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe, clearMe, nextColorSlot,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe,
   loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
-  getTheme, applyTheme, setTheme
+  getTheme, applyTheme, setTheme, enforceTwoPeople
 } from './ledger-core.js';
 
 applyTheme(getTheme());
@@ -65,28 +65,20 @@ function renderNamePrompt(resolve){
   app.innerHTML =
     '<div style="padding-top:60px;">' +
       '<p class="eyebrow">WELCOME</p>' +
-      '<h1>What\'s your name?</h1>' +
-      '<p class="sub">This links bills to you on this household ledger. Your partner does the same on their phone.</p>' +
-      '<div class="field"><input id="nameInput" placeholder="e.g. Daniel" autofocus /></div>' +
-      '<button class="btn-primary" id="nameSaveBtn" style="width:100%;">Continue</button>' +
+      '<h1>Who\'s this?</h1>' +
+      '<p class="sub">Pick your name to link bills to you on this device.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;margin-top:20px;">' +
+        data.people.map(function(p){
+          return '<button class="btn-primary" data-pick="' + p.id + '" style="width:100%;">' + p.name + '</button>';
+        }).join('') +
+      '</div>' +
     '</div>';
-  document.getElementById('nameSaveBtn').onclick = function(){
-    var val = document.getElementById('nameInput').value.trim();
-    if(!val) return;
-    var existing = data.people.find(function(p){ return p.name.toLowerCase()===val.toLowerCase(); });
-    if(existing){
-      myPersonId = existing.id;
-    } else {
-      var slot = nextColorSlot(data);
-      var person = { id: uid(), name: val, color: slot };
-      data.people.push(person);
-      myPersonId = person.id;
-    }
-    saveMe(myPersonId);
-    saveData(data).then(resolve);
-  };
-  document.getElementById('nameInput').addEventListener('keydown', function(e){
-    if(e.key==='Enter') document.getElementById('nameSaveBtn').click();
+  app.querySelectorAll('[data-pick]').forEach(function(btn){
+    btn.onclick = function(){
+      myPersonId = btn.getAttribute('data-pick');
+      saveMe(myPersonId);
+      resolve();
+    };
   });
 }
 
@@ -270,26 +262,7 @@ function deleteItem(type, id){
 function peopleOptionsHtml(selectedId){
   return data.people.map(function(p){
     return '<option value="' + p.id + '" ' + (selectedId===p.id ? 'selected':'') + '>' + p.name + '</option>';
-  }).join('') + '<option value="__new__">+ Add a new person</option>';
-}
-
-function attachNewPersonHandler(selectEl, currentId){
-  selectEl.addEventListener('change', function(e){
-    if(e.target.value==='__new__'){
-      var name = prompt('Name of new person:');
-      if(name && name.trim()){
-        var slot = nextColorSlot(data);
-        var person = {id: uid(), name: name.trim(), color: slot};
-        data.people.push(person);
-        saveData(data);
-        var opt = document.createElement('option');
-        opt.value = person.id; opt.textContent = person.name; opt.selected = true;
-        e.target.insertBefore(opt, e.target.lastElementChild);
-      } else {
-        e.target.value = currentId || (data.people[0] ? data.people[0].id : '');
-      }
-    }
-  });
+  }).join('');
 }
 
 function openBillForm(billId){
@@ -317,7 +290,6 @@ function openBillForm(billId){
 
   document.getElementById('f_cancel').onclick = function(){ overlay.remove(); };
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-  attachNewPersonHandler(document.getElementById('f_payer'), editing?editing.payerId:null);
 
   if(document.getElementById('f_delete')){
     document.getElementById('f_delete').onclick = function(){
@@ -373,7 +345,6 @@ function openExpenseForm(extraId){
 
   document.getElementById('x_cancel').onclick = function(){ overlay.remove(); };
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-  attachNewPersonHandler(document.getElementById('x_payer'), editing?editing.payerId:null);
 
   if(document.getElementById('x_delete')){
     document.getElementById('x_delete').onclick = function(){
@@ -407,9 +378,7 @@ function openSettings(){
   var rows = data.people.map(function(p){
     var c = colorFor(p);
     return '<div class="person-row"><span class="dot" style="background:' + c.main + '"></span>' +
-      '<input data-pid="' + p.id + '" value="' + p.name + '" />' +
-      '<button class="mini-btn" data-del-person="' + p.id + '" title="Remove person" style="color:var(--red);font-size:16px;">✕</button>' +
-    '</div>';
+      '<input data-pid="' + p.id + '" value="' + p.name + '" /></div>';
   }).join('');
 
   var overlay = document.createElement('div');
@@ -432,28 +401,6 @@ function openSettings(){
   document.getElementById('themeToggle').onchange = function(e){ setTheme(e.target.checked ? 'dark' : 'light'); };
   document.getElementById('s_cancel').onclick = function(){ overlay.remove(); };
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-  overlay.querySelectorAll('[data-del-person]').forEach(function(btn){
-    btn.onclick = function(){
-      var pid = btn.getAttribute('data-del-person');
-      var person = findPerson(data, pid);
-      var billCount = data.bills.filter(function(b){ return b.payerId===pid; }).length;
-      var extraCount = (data.extras||[]).filter(function(e){ return e.payerId===pid; }).length;
-      if(billCount + extraCount > 0){
-        alert(person.name + ' still has ' + billCount + ' bill(s) and ' + extraCount + ' expense(s) assigned. Edit those and change "Who pays" before removing this person.');
-        return;
-      }
-      if(!confirm('Remove ' + person.name + ' from this ledger? This can\'t be undone.')) return;
-      data.people = data.people.filter(function(p){ return p.id !== pid; });
-      var wasMe = (myPersonId === pid);
-      if(wasMe){ myPersonId = null; clearMe(); }
-      saveData(data).then(function(ok){
-        storageOk = ok;
-        overlay.remove();
-        if(wasMe){ ensureIdentity().then(render); } else { render(); }
-      });
-    };
-  });
-  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
   document.getElementById('s_save').onclick = function(){
     overlay.querySelectorAll('input[data-pid]').forEach(function(input){
       var p = findPerson(data, input.getAttribute('data-pid'));
@@ -469,6 +416,8 @@ async function start(){
   myPersonId = loadMe();
   if(!firebaseReady){ render(); return; }
   data = await loadInitial();
+  enforceTwoPeople(data);
+  await saveData(data);
   await ensureIdentity();
   render();
   subscribeLive(function(d){
