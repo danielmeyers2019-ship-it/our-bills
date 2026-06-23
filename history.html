@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div class="gear" id="gearBtn" title="Settings">⚙</div>
 <div class="wrap" id="app">
   <div class="loading">Loading history…</div>
 </div>
@@ -17,8 +18,11 @@
 import {
   firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
   monthKeyOf, dueDateInMonth, paymentKey, loadMe, nextColorSlot,
-  loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml
+  loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
+  getTheme, applyTheme, setTheme
 } from './ledger-core.js';
+
+applyTheme(getTheme());
 
 var data = defaultData();
 var storageOk = true;
@@ -305,6 +309,26 @@ function setPaid(type, id, paid){
   }
   saveData(data).then(function(ok){ storageOk = ok; render(); });
 }
+
+function openSettings(){
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>Settings</h2>' +
+      '<div class="settings-row"><span>Dark mode</span>' +
+        '<label class="switch"><input type="checkbox" id="themeToggle" ' + (getTheme()==='dark'?'checked':'') + ' /><span class="slider"></span></label>' +
+      '</div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="s_cancel" style="flex:1;">Close</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.getElementById('themeToggle').onchange = function(e){ setTheme(e.target.checked ? 'dark' : 'light'); };
+  document.getElementById('s_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+}
+document.getElementById('gearBtn').addEventListener('click', openSettings);
 
 async function start(){
   myPersonId = loadMe();

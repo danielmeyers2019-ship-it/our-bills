@@ -76,6 +76,18 @@ export function paymentKey(billId, monthKey){ return billId + '|' + monthKey; }
 export function loadMe(){ return localStorage.getItem(ME_KEY); }
 export function saveMe(id){ localStorage.setItem(ME_KEY, id); }
 
+export const THEME_KEY = 'ledger-theme';
+export function getTheme(){
+  return localStorage.getItem(THEME_KEY) || 'light';
+}
+export function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
+}
+export function setTheme(theme){
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme(theme);
+}
+
 export function nextColorSlot(data){
   var used = data.people.map(function(p){ return p.color; });
   if(used.indexOf('A')===-1) return 'A';

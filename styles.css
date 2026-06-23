@@ -1,6 +1,7 @@
 :root{
   --bg:#EEF1F4;
   --card:#FFFFFF;
+  --field-bg:#FAFBFC;
   --ink:#20283A;
   --ink-soft:#5C667A;
   --line:#DDE3EA;
@@ -18,6 +19,27 @@
   --red-soft:#FBE9E7;
   --radius:14px;
 }
+[data-theme="dark"]{
+  --bg:#161A20;
+  --card:#1F242B;
+  --field-bg:#262B33;
+  --ink:#E7EAEE;
+  --ink-soft:#92A0B0;
+  --line:#2C333C;
+  --personA:#8B8EE8;
+  --personA-soft:#262A45;
+  --personB:#4FD1C5;
+  --personB-soft:#1B3A38;
+  --neutral:#8A93A0;
+  --neutral-soft:#262B33;
+  --paid:#5FBE78;
+  --paid-soft:#1E3326;
+  --amber:#E0AE52;
+  --amber-soft:#3A2E15;
+  --red:#E0635A;
+  --red-soft:#3A1F1C;
+}
+body{ transition: background-color .2s ease, color .2s ease; }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0; padding:0;}
 body{
@@ -191,7 +213,7 @@ h1{
   display:flex; align-items:flex-end; justify-content:center; z-index:50; padding:0;
 }
 .sheet{
-  background:#fff; width:100%; max-width:560px; border-radius:20px 20px 0 0;
+  background:var(--card); width:100%; max-width:560px; border-radius:20px 20px 0 0;
   padding:22px 18px 28px; max-height:88vh; overflow-y:auto;
 }
 .sheet h2{ font-family:'Space Grotesk',sans-serif; font-size:20px; margin:0 0 16px; }
@@ -203,7 +225,7 @@ h1{
 .field input, .field select{
   width:100%; font-family:'Inter',sans-serif; font-size:15px;
   padding:11px 12px; border:1px solid var(--line); border-radius:10px;
-  background:#FAFBFC; color:var(--ink);
+  background:var(--field-bg); color:var(--ink);
 }
 .field input:focus, .field select:focus{ outline:2px solid var(--personA); }
 .two-col{ display:flex; gap:10px; }
@@ -250,6 +272,25 @@ code.inline{
 .field textarea{
   width:100%; font-family:'Inter',sans-serif; font-size:14px;
   padding:11px 12px; border:1px solid var(--line); border-radius:10px;
-  background:#FAFBFC; color:var(--ink); resize:vertical; min-height:60px;
+  background:var(--field-bg); color:var(--ink); resize:vertical; min-height:60px;
 }
 .field textarea:focus{ outline:2px solid var(--personA); }
+
+/* theme toggle switch */
+.settings-row{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 0 14px;
+}
+.settings-row span{ font-size:14px; font-weight:600; }
+.switch{ position:relative; display:inline-block; width:44px; height:26px; flex-shrink:0; }
+.switch input{ opacity:0; width:0; height:0; }
+.switch .slider{
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background:var(--line); transition:.2s; border-radius:999px;
+}
+.switch .slider:before{
+  position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px;
+  background:#fff; transition:.2s; border-radius:50%;
+}
+.switch input:checked + .slider{ background:var(--ink); }
+.switch input:checked + .slider:before{ transform:translateX(18px); }
