@@ -18,7 +18,7 @@
 import {
   firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
   monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe, nextColorSlot,
-  loadInitial, saveData, subscribeLive
+  loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml
 } from './ledger-core.js';
 
 var storageOk = true;
@@ -31,7 +31,7 @@ var todayDate = new Date(); todayDate.setHours(0,0,0,0);
 var monthKey = monthKeyOf(todayDate);
 var monthLabel = todayDate.toLocaleString('default', {month:'long', year:'numeric'});
 
-function statusFor(bill){
+function billStatus(bill){
   var p = data.payments[paymentKey(bill.id, monthKey)];
   if(p && p.paid) return 'paid';
   var due = dueDateInMonth(bill.dueDay, todayDate.getFullYear(), todayDate.getMonth());
@@ -39,6 +39,18 @@ function statusFor(bill){
   if(diffDays < 0) return 'overdue';
   if(diffDays <= 5) return 'due-soon';
   return 'upcoming';
+}
+
+function buildItems(){
+  var billItems = data.bills.map(function(b){
+    return { type:'bill', id:b.id, name:b.name, amount:Number(b.amount), day:b.dueDay,
+             payerId:b.payerId, note:b.note, status:billStatus(b) };
+  });
+  var extraItems = extrasForMonth(data, monthKey).map(function(e){
+    return { type:'extra', id:e.id, name:e.name, amount:Number(e.amount), day:e.day,
+             payerId:e.payerId, note:e.note, status: e.paid ? 'paid' : 'unpaid' };
+  });
+  return billItems.concat(extraItems);
 }
 
 function ensureIdentity(){
@@ -77,32 +89,33 @@ function renderNamePrompt(resolve){
 
 function distinctPayers(){
   var ids = {};
-  data.bills.forEach(function(b){ ids[b.payerId]=true; });
+  buildItems().forEach(function(i){ ids[i.payerId]=true; });
   return data.people.filter(function(p){ return ids[p.id]; });
 }
 
-function visibleBills(){
-  var list = data.bills.slice();
+function visibleItems(){
+  var list = buildItems();
   if(activeFilter==='unpaid'){
-    list = list.filter(function(b){ return statusFor(b)!=='paid'; });
+    list = list.filter(function(i){ return i.status!=='paid'; });
   } else if(activeFilter!=='all'){
-    list = list.filter(function(b){ return b.payerId===activeFilter; });
+    list = list.filter(function(i){ return i.payerId===activeFilter; });
   }
-  var order = {overdue:0, 'due-soon':1, upcoming:2, paid:3};
+  var order = {overdue:0, 'due-soon':1, upcoming:2, unpaid:1, paid:3};
   list.sort(function(a,b){
-    var sa=statusFor(a), sb=statusFor(b);
-    if(order[sa]!==order[sb]) return order[sa]-order[sb];
-    return a.dueDay - b.dueDay;
+    var sa=order[a.status]!==undefined?order[a.status]:2;
+    var sb=order[b.status]!==undefined?order[b.status]:2;
+    if(sa!==sb) return sa-sb;
+    return (a.day||0) - (b.day||0);
   });
   return list;
 }
 
 function summaryFor(person){
   var assigned=0, paid=0;
-  data.bills.forEach(function(b){
-    if(b.payerId===person.id){
-      assigned += Number(b.amount);
-      if(statusFor(b)==='paid') paid += Number(b.amount);
+  buildItems().forEach(function(i){
+    if(i.payerId===person.id){
+      assigned += i.amount;
+      if(i.status==='paid') paid += i.amount;
     }
   });
   return {assigned:assigned, paid:paid};
@@ -120,9 +133,9 @@ function renderSetupNeeded(){
 function render(){
   if(!firebaseReady){ renderSetupNeeded(); return; }
 
-  var people = data.people;
-  var overdueCount = data.bills.filter(function(b){return statusFor(b)==='overdue';}).length;
-  var dueSoonCount = data.bills.filter(function(b){return statusFor(b)==='due-soon';}).length;
+  var items = visibleItems();
+  var overdueCount = buildItems().filter(function(i){return i.status==='overdue';}).length;
+  var dueSoonCount = buildItems().filter(function(i){return i.status==='due-soon';}).length;
 
   var html = '';
   html += '<div class="page-nav"><a class="active" href="index.html">Ledger</a><a href="history.html">History</a></div>';
@@ -132,9 +145,9 @@ function render(){
            (myPersonId && findPerson(data, myPersonId) ? ' &middot; Signed in as ' + findPerson(data, myPersonId).name : '') +
            ' &middot; <button id="editNameLink">change</button></p>';
 
-  if(people.length){
+  if(data.people.length){
     html += '<div class="tally-row">';
-    people.slice(0,2).forEach(function(p){
+    data.people.slice(0,2).forEach(function(p){
       var c = colorFor(p);
       var s = summaryFor(p);
       html += '<div class="tally-chip">' +
@@ -151,7 +164,7 @@ function render(){
     if(overdueCount) parts.push(overdueCount + ' overdue');
     if(dueSoonCount) parts.push(dueSoonCount + ' due soon');
     html += '<div class="banner alert">⚠ ' + parts.join(' · ') + '</div>';
-  } else if(data.bills.length){
+  } else if(items.length){
     html += '<div class="banner calm">✓ All caught up for ' + monthLabel.split(' ')[0] + '</div>';
   }
 
@@ -163,41 +176,36 @@ function render(){
   html += '<button class="filter-btn ' + (activeFilter==='unpaid'?'active':'') + '" data-filter="unpaid">Unpaid</button>';
   html += '</div>';
 
-  html += '<div class="list-head"><span>' + visibleBills().length + ' bill' + (visibleBills().length===1?'':'s') + '</span>' +
-    '<button class="add-btn" id="addBillBtn">+ Add bill</button></div>';
+  html += '<div class="list-head"><span>' + items.length + ' item' + (items.length===1?'':'s') + '</span>' +
+    '<div style="display:flex;gap:8px;">' +
+    '<button class="add-btn" id="addExpenseBtn" style="background:var(--personB);">+ Expense</button>' +
+    '<button class="add-btn" id="addBillBtn">+ Add bill</button>' +
+    '</div></div>';
 
-  var bills = visibleBills();
-  if(!bills.length){
+  if(!items.length){
     html += '<div class="empty">No bills yet. Tap "Add bill" to start tracking rent, utilities, subscriptions and more.</div>';
   } else {
-    bills.forEach(function(b){
-      var person = findPerson(data, b.payerId);
+    items.forEach(function(it){
+      var person = findPerson(data, it.payerId);
       var c = colorFor(person);
-      var status = statusFor(b);
-      var due = dueDateInMonth(b.dueDay, todayDate.getFullYear(), todayDate.getMonth());
-      var dueStr = due.toLocaleDateString('default', {month:'short', day:'numeric'});
-      var statusLabel = {overdue:'Overdue', 'due-soon':'Due soon', upcoming:'Upcoming', paid:'Paid'}[status];
+      var dateStr;
+      if(it.day){
+        var due = dueDateInMonth(it.day, todayDate.getFullYear(), todayDate.getMonth());
+        dateStr = (it.type==='extra' ? 'On ' : 'Due ') + due.toLocaleDateString('default', {month:'short', day:'numeric'});
+      } else {
+        dateStr = it.type==='extra' ? 'This month' : '';
+      }
+      var statusLabel = {overdue:'Overdue', 'due-soon':'Due soon', upcoming:'Upcoming', paid:'Paid', unpaid:'Unpaid'}[it.status];
+      var primaryAction = it.status==='paid'
+        ? '<button class="undo-btn" data-action="undo" data-type="' + it.type + '" data-id="' + it.id + '">Undo</button>'
+        : '<button class="mark-paid-btn" data-action="markpaid" data-type="' + it.type + '" data-id="' + it.id + '">Mark paid</button>';
 
-      html += '<div class="bill-card" data-bill="' + b.id + '">' +
-        '<div class="bar" style="background:' + c.main + '"></div>' +
-        '<div class="bill-body">' +
-          '<div class="bill-top">' +
-            '<div><p class="bill-name">' + b.name + '</p>' +
-              '<div class="bill-meta"><span>Due ' + dueStr + '</span><span>&middot;</span><span>' + (person?person.name:'Unassigned') + '</span></div></div>' +
-            '<div class="bill-amt">' + fmtMoney(b.amount) + '</div>' +
-          '</div>' +
-          '<div class="bill-bottom">' +
-            '<span class="pill ' + status + '">' + statusLabel + '</span>' +
-            (status==='paid'
-              ? '<button class="undo-btn" data-action="undo" data-id="' + b.id + '">Undo</button>'
-              : '<button class="mark-paid-btn" data-action="markpaid" data-id="' + b.id + '">Mark paid</button>') +
-          '</div>' +
-          '<div class="action-row" style="margin-top:8px;">' +
-            '<button class="mini-btn" data-action="edit" data-id="' + b.id + '">Edit</button>' +
-            '<button class="mini-btn" data-action="delete" data-id="' + b.id + '">Delete</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      html += billCardHtml({
+        type: it.type, id: it.id, barColor: c.main, name: it.name, dateStr: dateStr,
+        payerName: person?person.name:'Unassigned', amount: fmtMoney(it.amount),
+        note: it.note, tag: it.type==='extra' ? 'One-time' : '',
+        statusClass: it.status, statusLabel: statusLabel, primaryActionHtml: primaryAction
+      });
     });
   }
 
@@ -216,6 +224,9 @@ function bindEvents(){
   var addBtn = document.getElementById('addBillBtn');
   if(addBtn) addBtn.onclick = function(){ openBillForm(null); };
 
+  var addExpenseBtn = document.getElementById('addExpenseBtn');
+  if(addExpenseBtn) addExpenseBtn.onclick = function(){ openExpenseForm(null); };
+
   document.querySelectorAll('.filter-btn').forEach(function(btn){
     btn.onclick = function(){ activeFilter = btn.getAttribute('data-filter'); render(); };
   });
@@ -223,55 +234,44 @@ function bindEvents(){
   document.querySelectorAll('[data-action]').forEach(function(el){
     el.onclick = function(){
       var action = el.getAttribute('data-action');
+      var type = el.getAttribute('data-type');
       var id = el.getAttribute('data-id');
-      if(action==='markpaid') markPaid(id, true);
-      if(action==='undo') markPaid(id, false);
-      if(action==='edit') openBillForm(id);
-      if(action==='delete') deleteBill(id);
+      if(action==='markpaid') setPaid(type, id, true);
+      if(action==='undo') setPaid(type, id, false);
+      if(action==='edit') type==='bill' ? openBillForm(id) : openExpenseForm(id);
+      if(action==='delete') deleteItem(type, id);
     };
   });
 }
 
-function markPaid(billId, paid){
-  data.payments[paymentKey(billId, monthKey)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
+function setPaid(type, id, paid){
+  if(type==='bill'){
+    data.payments[paymentKey(id, monthKey)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
+  } else {
+    var extra = data.extras.find(function(e){return e.id===id;});
+    if(extra) extra.paid = paid;
+  }
   saveData(data).then(function(ok){ storageOk = ok; render(); });
 }
 
-function deleteBill(billId){
-  if(!confirm('Delete this bill? This removes it for everyone.')) return;
-  data.bills = data.bills.filter(function(b){ return b.id !== billId; });
+function deleteItem(type, id){
+  if(!confirm('Delete this? This removes it for everyone.')) return;
+  if(type==='bill'){
+    data.bills = data.bills.filter(function(b){ return b.id !== id; });
+  } else {
+    data.extras = data.extras.filter(function(e){ return e.id !== id; });
+  }
   saveData(data).then(function(ok){ storageOk = ok; render(); });
 }
 
-function openBillForm(billId){
-  var editing = billId ? data.bills.find(function(b){return b.id===billId;}) : null;
-  var peopleOptions = data.people.map(function(p){
-    return '<option value="' + p.id + '" ' + (editing && editing.payerId===p.id ? 'selected':'') + '>' + p.name + '</option>';
-  }).join('');
+function peopleOptionsHtml(selectedId){
+  return data.people.map(function(p){
+    return '<option value="' + p.id + '" ' + (selectedId===p.id ? 'selected':'') + '>' + p.name + '</option>';
+  }).join('') + '<option value="__new__">+ Add a new person</option>';
+}
 
-  var overlay = document.createElement('div');
-  overlay.className = 'overlay';
-  overlay.innerHTML =
-    '<div class="sheet">' +
-      '<h2>' + (editing ? 'Edit bill' : 'Add a bill') + '</h2>' +
-      '<div class="field"><label>Bill name</label><input id="f_name" placeholder="e.g. Rent, Internet, Netflix" value="' + (editing?editing.name:'') + '" /></div>' +
-      '<div class="two-col">' +
-        '<div class="field"><label>Amount</label><input id="f_amount" type="number" step="0.01" placeholder="0.00" value="' + (editing?editing.amount:'') + '" /></div>' +
-        '<div class="field"><label>Due day of month</label><input id="f_day" type="number" min="1" max="31" placeholder="1-31" value="' + (editing?editing.dueDay:'') + '" /></div>' +
-      '</div>' +
-      '<div class="field"><label>Who pays</label><select id="f_payer">' + peopleOptions + '<option value="__new__">+ Add a new person</option></select></div>' +
-      '<div class="sheet-actions">' +
-        '<button class="btn-secondary" id="f_cancel">Cancel</button>' +
-        '<button class="btn-primary" id="f_save">' + (editing?'Save changes':'Add bill') + '</button>' +
-      '</div>' +
-      (editing ? '<button class="btn-danger" id="f_delete" style="width:100%;margin-top:10px;">Delete bill</button>' : '') +
-    '</div>';
-  document.body.appendChild(overlay);
-
-  document.getElementById('f_cancel').onclick = function(){ overlay.remove(); };
-  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-
-  document.getElementById('f_payer').addEventListener('change', function(e){
+function attachNewPersonHandler(selectEl, currentId){
+  selectEl.addEventListener('change', function(e){
     if(e.target.value==='__new__'){
       var name = prompt('Name of new person:');
       if(name && name.trim()){
@@ -283,15 +283,43 @@ function openBillForm(billId){
         opt.value = person.id; opt.textContent = person.name; opt.selected = true;
         e.target.insertBefore(opt, e.target.lastElementChild);
       } else {
-        e.target.value = editing ? editing.payerId : (data.people[0] ? data.people[0].id : '');
+        e.target.value = currentId || (data.people[0] ? data.people[0].id : '');
       }
     }
   });
+}
+
+function openBillForm(billId){
+  var editing = billId ? data.bills.find(function(b){return b.id===billId;}) : null;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>' + (editing ? 'Edit bill' : 'Add a bill') + '</h2>' +
+      '<div class="field"><label>Bill name</label><input id="f_name" placeholder="e.g. Rent, Internet, Netflix" value="' + (editing?editing.name:'') + '" /></div>' +
+      '<div class="two-col">' +
+        '<div class="field"><label>Amount</label><input id="f_amount" type="number" step="0.01" placeholder="0.00" value="' + (editing?editing.amount:'') + '" /></div>' +
+        '<div class="field"><label>Due day of month</label><input id="f_day" type="number" min="1" max="31" placeholder="1-31" value="' + (editing?editing.dueDay:'') + '" /></div>' +
+      '</div>' +
+      '<div class="field"><label>Who pays</label><select id="f_payer">' + peopleOptionsHtml(editing?editing.payerId:null) + '</select></div>' +
+      '<div class="field"><label>Note (optional)</label><textarea id="f_note" placeholder="e.g. auto-pays from checking">' + (editing&&editing.note?editing.note:'') + '</textarea></div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="f_cancel">Cancel</button>' +
+        '<button class="btn-primary" id="f_save">' + (editing?'Save changes':'Add bill') + '</button>' +
+      '</div>' +
+      (editing ? '<button class="btn-danger" id="f_delete" style="width:100%;margin-top:10px;">Delete bill</button>' : '') +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  document.getElementById('f_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  attachNewPersonHandler(document.getElementById('f_payer'), editing?editing.payerId:null);
 
   if(document.getElementById('f_delete')){
     document.getElementById('f_delete').onclick = function(){
       overlay.remove();
-      deleteBill(billId);
+      deleteItem('bill', billId);
     };
   }
 
@@ -300,6 +328,7 @@ function openBillForm(billId){
     var amount = parseFloat(document.getElementById('f_amount').value);
     var day = parseInt(document.getElementById('f_day').value, 10);
     var payerId = document.getElementById('f_payer').value;
+    var note = document.getElementById('f_note').value.trim();
 
     if(!name || isNaN(amount) || isNaN(day) || day<1 || day>31 || !payerId || payerId==='__new__'){
       alert('Please fill in a bill name, amount, due day (1-31), and who pays.');
@@ -307,9 +336,65 @@ function openBillForm(billId){
     }
 
     if(editing){
-      editing.name = name; editing.amount = amount; editing.dueDay = day; editing.payerId = payerId;
+      editing.name = name; editing.amount = amount; editing.dueDay = day; editing.payerId = payerId; editing.note = note;
     } else {
-      data.bills.push({ id: uid(), name: name, amount: amount, dueDay: day, payerId: payerId, createdAt: new Date().toISOString() });
+      data.bills.push({ id: uid(), name: name, amount: amount, dueDay: day, payerId: payerId, note: note, createdAt: new Date().toISOString() });
+    }
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
+  };
+}
+
+function openExpenseForm(extraId){
+  var editing = extraId ? data.extras.find(function(e){return e.id===extraId;}) : null;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>' + (editing ? 'Edit expense' : 'Add a one-time expense') + '</h2>' +
+      '<p class="notice">This is a one-off cost for ' + monthLabel + ' only — it won\'t repeat next month like a regular bill.</p>' +
+      '<div class="field" style="margin-top:12px;"><label>What was it for</label><input id="x_name" placeholder="e.g. Vet visit, car repair" value="' + (editing?editing.name:'') + '" /></div>' +
+      '<div class="two-col">' +
+        '<div class="field"><label>Amount</label><input id="x_amount" type="number" step="0.01" placeholder="0.00" value="' + (editing?editing.amount:'') + '" /></div>' +
+        '<div class="field"><label>Day of month</label><input id="x_day" type="number" min="1" max="31" placeholder="1-31" value="' + (editing?editing.day:todayDate.getDate()) + '" /></div>' +
+      '</div>' +
+      '<div class="field"><label>Who paid / owes it</label><select id="x_payer">' + peopleOptionsHtml(editing?editing.payerId:null) + '</select></div>' +
+      '<div class="field"><label>Note (optional)</label><textarea id="x_note" placeholder="any extra context">' + (editing&&editing.note?editing.note:'') + '</textarea></div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="x_cancel">Cancel</button>' +
+        '<button class="btn-primary" id="x_save">' + (editing?'Save changes':'Add expense') + '</button>' +
+      '</div>' +
+      (editing ? '<button class="btn-danger" id="x_delete" style="width:100%;margin-top:10px;">Delete expense</button>' : '') +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  document.getElementById('x_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  attachNewPersonHandler(document.getElementById('x_payer'), editing?editing.payerId:null);
+
+  if(document.getElementById('x_delete')){
+    document.getElementById('x_delete').onclick = function(){
+      overlay.remove();
+      deleteItem('extra', extraId);
+    };
+  }
+
+  document.getElementById('x_save').onclick = function(){
+    var name = document.getElementById('x_name').value.trim();
+    var amount = parseFloat(document.getElementById('x_amount').value);
+    var day = parseInt(document.getElementById('x_day').value, 10);
+    var payerId = document.getElementById('x_payer').value;
+    var note = document.getElementById('x_note').value.trim();
+
+    if(!name || isNaN(amount) || isNaN(day) || day<1 || day>31 || !payerId || payerId==='__new__'){
+      alert('Please fill in what it was for, an amount, a day (1-31), and who it belongs to.');
+      return;
+    }
+
+    if(editing){
+      editing.name = name; editing.amount = amount; editing.day = day; editing.payerId = payerId; editing.note = note;
+    } else {
+      data.extras.push({ id: uid(), name: name, amount: amount, day: day, payerId: payerId, note: note, monthKey: monthKey, paid:false, createdAt: new Date().toISOString() });
     }
     saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
   };

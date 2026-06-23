@@ -25,6 +25,7 @@ export const ME_KEY = 'ledger-my-person-id';
 
 export function defaultData(){
   return {
+    extras: [],
     people: [
       { id: 'p-daniel', name: 'Daniel', color: 'A' },
       { id: 'p-maddy', name: 'Maddy', color: 'B' }
@@ -90,6 +91,7 @@ export async function loadInitial(){
       if(!d.payments) d.payments = {};
       if(!d.people) d.people = [];
       if(!d.bills) d.bills = [];
+      if(!d.extras) d.extras = [];
       return d;
     } else {
       var fresh = defaultData();
@@ -99,6 +101,37 @@ export async function loadInitial(){
   }catch(e){
     return defaultData();
   }
+}
+
+export function extrasForMonth(data, monthKey){
+  return (data.extras || []).filter(function(e){ return e.monthKey === monthKey; });
+}
+
+export function billCardHtml(opts){
+  var noteHtml = opts.note ? '<div class="bill-note">' + opts.note + '</div>' : '';
+  var tagHtml = opts.tag ? ' <span class="tag-badge">' + opts.tag + '</span>' : '';
+  var editDelete = opts.showEditDelete === false ? '' :
+    '<div class="action-row" style="margin-top:8px;">' +
+      '<button class="mini-btn" data-action="edit" data-type="' + opts.type + '" data-id="' + opts.id + '">Edit</button>' +
+      '<button class="mini-btn" data-action="delete" data-type="' + opts.type + '" data-id="' + opts.id + '">Delete</button>' +
+    '</div>';
+  return '<div class="bill-card">' +
+    '<div class="bar" style="background:' + opts.barColor + '"></div>' +
+    '<div class="bill-body">' +
+      '<div class="bill-top">' +
+        '<div><p class="bill-name">' + opts.name + tagHtml + '</p>' +
+          '<div class="bill-meta"><span>' + opts.dateStr + '</span><span>&middot;</span><span>' + opts.payerName + '</span></div>' +
+          noteHtml +
+        '</div>' +
+        '<div class="bill-amt">' + opts.amount + '</div>' +
+      '</div>' +
+      '<div class="bill-bottom">' +
+        '<span class="pill ' + opts.statusClass + '">' + opts.statusLabel + '</span>' +
+        opts.primaryActionHtml +
+      '</div>' +
+      editDelete +
+    '</div>' +
+  '</div>';
 }
 
 export async function saveData(data){
@@ -118,6 +151,7 @@ export function subscribeLive(callback){
       if(!d.payments) d.payments = {};
       if(!d.people) d.people = [];
       if(!d.bills) d.bills = [];
+      if(!d.extras) d.extras = [];
       callback(d);
     }
   }, function(){ callback(null); });
