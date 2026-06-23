@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Household Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+<div class="gear" id="gearBtn" title="Settings">⚙</div>
+<div class="wrap" id="app">
+  <div class="loading">Loading your ledger…</div>
+</div>
+
+<script type="module">
+import {
+  firebaseReady, defaultData, uid, fmtMoney, colorFor, findPerson,
+  monthKeyOf, dueDateInMonth, paymentKey, loadMe, saveMe,
+  loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
+  getTheme, applyTheme, setTheme, enforceTwoPeople
+} from './ledger-core.js';
+
+applyTheme(getTheme());
+
+var storageOk = true;
+var activeFilter = 'all';
+var myPersonId = null;
+var data = defaultData();
+
+var app = document.getElementById('app');
+var todayDate = new Date(); todayDate.setHours(0,0,0,0);
+var monthKey = monthKeyOf(todayDate);
+var monthLabel = todayDate.toLocaleString('default', {month:'long', year:'numeric'});
+
+function billStatus(bill){
+  var p = data.payments[paymentKey(bill.id, monthKey)];
+  if(p && p.paid) return 'paid';
+  var due = dueDateInMonth(bill.dueDay, todayDate.getFullYear(), todayDate.getMonth());
+  var diffDays = Math.round((due - todayDate) / 86400000);
+  if(diffDays < 0) return 'overdue';
+  if(diffDays <= 5) return 'due-soon';
+  return 'upcoming';
+}
+
+function buildItems(){
+  var billItems = data.bills.map(function(b){
+    return { type:'bill', id:b.id, name:b.name, amount:Number(b.amount), day:b.dueDay,
+             payerId:b.payerId, note:b.note, status:billStatus(b) };
+  });
+  var extraItems = extrasForMonth(data, monthKey).map(function(e){
+    return { type:'extra', id:e.id, name:e.name, amount:Number(e.amount), day:e.day,
+             payerId:e.payerId, note:e.note, status: e.paid ? 'paid' : 'unpaid' };
+  });
+  return billItems.concat(extraItems);
+}
+
+function ensureIdentity(){
+  if(myPersonId && findPerson(data, myPersonId)) return Promise.resolve();
+  return new Promise(function(resolve){ renderNamePrompt(resolve); });
+}
+
+function renderNamePrompt(resolve){
+  app.innerHTML =
+    '<div style="padding-top:60px;">' +
+      '<p class="eyebrow">WELCOME</p>' +
+      '<h1>Who\'s this?</h1>' +
+      '<p class="sub">Pick your name to link bills to you on this device.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;margin-top:20px;">' +
+        data.people.map(function(p){
+          return '<button class="btn-primary" data-pick="' + p.id + '" style="width:100%;">' + p.name + '</button>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  app.querySelectorAll('[data-pick]').forEach(function(btn){
+    btn.onclick = function(){
+      myPersonId = btn.getAttribute('data-pick');
+      saveMe(myPersonId);
+      resolve();
+    };
+  });
+}
+
+function distinctPayers(){
+  var ids = {};
+  buildItems().forEach(function(i){ ids[i.payerId]=true; });
+  return data.people.filter(function(p){ return ids[p.id]; });
+}
+
+function visibleItems(){
+  var list = buildItems();
+  if(activeFilter==='unpaid'){
+    list = list.filter(function(i){ return i.status!=='paid'; });
+  } else if(activeFilter!=='all'){
+    list = list.filter(function(i){ return i.payerId===activeFilter; });
+  }
+  var order = {overdue:0, 'due-soon':1, upcoming:2, unpaid:1, paid:3};
+  list.sort(function(a,b){
+    var sa=order[a.status]!==undefined?order[a.status]:2;
+    var sb=order[b.status]!==undefined?order[b.status]:2;
+    if(sa!==sb) return sa-sb;
+    return (a.day||0) - (b.day||0);
+  });
+  return list;
+}
+
+function summaryFor(person){
+  var assigned=0, paid=0;
+  buildItems().forEach(function(i){
+    if(i.payerId===person.id){
+      assigned += i.amount;
+      if(i.status==='paid') paid += i.amount;
+    }
+  });
+  return {assigned:assigned, paid:paid};
+}
+
+function renderSetupNeeded(){
+  app.innerHTML =
+    '<div style="padding-top:50px;">' +
+      '<p class="eyebrow">SETUP NEEDED</p>' +
+      '<h1>Connect your Firebase project</h1>' +
+      '<p class="sub">Open ledger-core.js and paste your Firebase config values in, then reload.</p>' +
+    '</div>';
+}
+
+function render(){
+  if(!firebaseReady){ renderSetupNeeded(); return; }
+
+  var items = visibleItems();
+  var overdueCount = buildItems().filter(function(i){return i.status==='overdue';}).length;
+  var dueSoonCount = buildItems().filter(function(i){return i.status==='due-soon';}).length;
+
+  var html = '';
+  html += '<div class="page-nav"><a class="active" href="index.html">Ledger</a><a href="history.html">History</a></div>';
+  html += '<p class="eyebrow">HOUSEHOLD LEDGER</p>';
+  html += '<h1>' + monthLabel + '</h1>';
+  html += '<p class="sub"><span class="live-dot"></span>Synced live' +
+           (myPersonId && findPerson(data, myPersonId) ? ' &middot; Signed in as ' + findPerson(data, myPersonId).name : '') +
+           ' &middot; <button id="editNameLink">change</button></p>';
+
+  if(data.people.length){
+    html += '<div class="tally-row">';
+    data.people.slice(0,2).forEach(function(p){
+      var c = colorFor(p);
+      var s = summaryFor(p);
+      html += '<div class="tally-chip">' +
+        '<div class="tally-name"><span class="dot" style="background:'+c.main+'"></span>' + p.name + '</div>' +
+        '<div class="tally-amt">' + fmtMoney(s.paid) + ' <span class="of">of ' + fmtMoney(s.assigned) + ' paid</span></div>' +
+      '</div>';
+    });
+    html += '</div>';
+    html += '<p class="merge-label">combined this month</p>';
+  }
+
+  if(overdueCount + dueSoonCount > 0){
+    var parts = [];
+    if(overdueCount) parts.push(overdueCount + ' overdue');
+    if(dueSoonCount) parts.push(dueSoonCount + ' due soon');
+    html += '<div class="banner alert">⚠ ' + parts.join(' · ') + '</div>';
+  } else if(items.length){
+    html += '<div class="banner calm">✓ All caught up for ' + monthLabel.split(' ')[0] + '</div>';
+  }
+
+  html += '<div class="filters">';
+  html += '<button class="filter-btn ' + (activeFilter==='all'?'active':'') + '" data-filter="all">All</button>';
+  distinctPayers().forEach(function(p){
+    html += '<button class="filter-btn ' + (activeFilter===p.id?'active':'') + '" data-filter="' + p.id + '">' + p.name + '</button>';
+  });
+  html += '<button class="filter-btn ' + (activeFilter==='unpaid'?'active':'') + '" data-filter="unpaid">Unpaid</button>';
+  html += '</div>';
+
+  html += '<div class="list-head"><span>' + items.length + ' item' + (items.length===1?'':'s') + '</span>' +
+    '<div style="display:flex;gap:8px;">' +
+    '<button class="add-btn" id="addExpenseBtn" style="background:var(--personB);">+ Expense</button>' +
+    '<button class="add-btn" id="addBillBtn">+ Add bill</button>' +
+    '</div></div>';
+
+  if(!items.length){
+    html += '<div class="empty">No bills yet. Tap "Add bill" to start tracking rent, utilities, subscriptions and more.</div>';
+  } else {
+    items.forEach(function(it){
+      var person = findPerson(data, it.payerId);
+      var c = colorFor(person);
+      var dateStr;
+      if(it.day){
+        var due = dueDateInMonth(it.day, todayDate.getFullYear(), todayDate.getMonth());
+        dateStr = (it.type==='extra' ? 'On ' : 'Due ') + due.toLocaleDateString('default', {month:'short', day:'numeric'});
+      } else {
+        dateStr = it.type==='extra' ? 'This month' : '';
+      }
+      var statusLabel = {overdue:'Overdue', 'due-soon':'Due soon', upcoming:'Upcoming', paid:'Paid', unpaid:'Unpaid'}[it.status];
+      var primaryAction = it.status==='paid'
+        ? '<button class="undo-btn" data-action="undo" data-type="' + it.type + '" data-id="' + it.id + '">Undo</button>'
+        : '<button class="mark-paid-btn" data-action="markpaid" data-type="' + it.type + '" data-id="' + it.id + '">Mark paid</button>';
+
+      html += billCardHtml({
+        type: it.type, id: it.id, barColor: c.main, name: it.name, dateStr: dateStr,
+        payerName: person?person.name:'Unassigned', amount: fmtMoney(it.amount),
+        note: it.note, tag: it.type==='extra' ? 'One-time' : '',
+        statusClass: it.status, statusLabel: statusLabel, primaryActionHtml: primaryAction
+      });
+    });
+  }
+
+  if(!storageOk){
+    html += '<div class="notice">Changes aren\'t syncing right now — check your connection and reload.</div>';
+  }
+
+  app.innerHTML = html;
+  bindEvents();
+}
+
+function bindEvents(){
+  var editNameLink = document.getElementById('editNameLink');
+  if(editNameLink) editNameLink.onclick = openSettings;
+
+  var addBtn = document.getElementById('addBillBtn');
+  if(addBtn) addBtn.onclick = function(){ openBillForm(null); };
+
+  var addExpenseBtn = document.getElementById('addExpenseBtn');
+  if(addExpenseBtn) addExpenseBtn.onclick = function(){ openExpenseForm(null); };
+
+  document.querySelectorAll('.filter-btn').forEach(function(btn){
+    btn.onclick = function(){ activeFilter = btn.getAttribute('data-filter'); render(); };
+  });
+
+  document.querySelectorAll('[data-action]').forEach(function(el){
+    el.onclick = function(){
+      var action = el.getAttribute('data-action');
+      var type = el.getAttribute('data-type');
+      var id = el.getAttribute('data-id');
+      if(action==='markpaid') setPaid(type, id, true);
+      if(action==='undo') setPaid(type, id, false);
+      if(action==='edit') type==='bill' ? openBillForm(id) : openExpenseForm(id);
+      if(action==='delete') deleteItem(type, id);
+    };
+  });
+}
+
+function setPaid(type, id, paid){
+  if(type==='bill'){
+    data.payments[paymentKey(id, monthKey)] = { paid: paid, paidOn: new Date().toISOString(), paidBy: myPersonId };
+  } else {
+    var extra = data.extras.find(function(e){return e.id===id;});
+    if(extra) extra.paid = paid;
+  }
+  saveData(data).then(function(ok){ storageOk = ok; render(); });
+}
+
+function deleteItem(type, id){
+  if(!confirm('Delete this? This removes it for everyone.')) return;
+  if(type==='bill'){
+    data.bills = data.bills.filter(function(b){ return b.id !== id; });
+  } else {
+    data.extras = data.extras.filter(function(e){ return e.id !== id; });
+  }
+  saveData(data).then(function(ok){ storageOk = ok; render(); });
+}
+
+function peopleOptionsHtml(selectedId){
+  return data.people.map(function(p){
+    return '<option value="' + p.id + '" ' + (selectedId===p.id ? 'selected':'') + '>' + p.name + '</option>';
+  }).join('');
+}
+
+function openBillForm(billId){
+  var editing = billId ? data.bills.find(function(b){return b.id===billId;}) : null;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>' + (editing ? 'Edit bill' : 'Add a bill') + '</h2>' +
+      '<div class="field"><label>Bill name</label><input id="f_name" placeholder="e.g. Rent, Internet, Netflix" value="' + (editing?editing.name:'') + '" /></div>' +
+      '<div class="two-col">' +
+        '<div class="field"><label>Amount</label><input id="f_amount" type="number" step="0.01" placeholder="0.00" value="' + (editing?editing.amount:'') + '" /></div>' +
+        '<div class="field"><label>Due day of month</label><input id="f_day" type="number" min="1" max="31" placeholder="1-31" value="' + (editing?editing.dueDay:'') + '" /></div>' +
+      '</div>' +
+      '<div class="field"><label>Who pays</label><select id="f_payer">' + peopleOptionsHtml(editing?editing.payerId:null) + '</select></div>' +
+      '<div class="field"><label>Note (optional)</label><textarea id="f_note" placeholder="e.g. auto-pays from checking">' + (editing&&editing.note?editing.note:'') + '</textarea></div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="f_cancel">Cancel</button>' +
+        '<button class="btn-primary" id="f_save">' + (editing?'Save changes':'Add bill') + '</button>' +
+      '</div>' +
+      (editing ? '<button class="btn-danger" id="f_delete" style="width:100%;margin-top:10px;">Delete bill</button>' : '') +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  document.getElementById('f_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+
+  if(document.getElementById('f_delete')){
+    document.getElementById('f_delete').onclick = function(){
+      overlay.remove();
+      deleteItem('bill', billId);
+    };
+  }
+
+  document.getElementById('f_save').onclick = function(){
+    var name = document.getElementById('f_name').value.trim();
+    var amount = parseFloat(document.getElementById('f_amount').value);
+    var day = parseInt(document.getElementById('f_day').value, 10);
+    var payerId = document.getElementById('f_payer').value;
+    var note = document.getElementById('f_note').value.trim();
+
+    if(!name || isNaN(amount) || isNaN(day) || day<1 || day>31 || !payerId || payerId==='__new__'){
+      alert('Please fill in a bill name, amount, due day (1-31), and who pays.');
+      return;
+    }
+
+    if(editing){
+      editing.name = name; editing.amount = amount; editing.dueDay = day; editing.payerId = payerId; editing.note = note;
+    } else {
+      data.bills.push({ id: uid(), name: name, amount: amount, dueDay: day, payerId: payerId, note: note, createdAt: new Date().toISOString() });
+    }
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
+  };
+}
+
+function openExpenseForm(extraId){
+  var editing = extraId ? data.extras.find(function(e){return e.id===extraId;}) : null;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>' + (editing ? 'Edit expense' : 'Add a one-time expense') + '</h2>' +
+      '<p class="notice">This is a one-off cost for ' + monthLabel + ' only — it won\'t repeat next month like a regular bill.</p>' +
+      '<div class="field" style="margin-top:12px;"><label>What was it for</label><input id="x_name" placeholder="e.g. Vet visit, car repair" value="' + (editing?editing.name:'') + '" /></div>' +
+      '<div class="two-col">' +
+        '<div class="field"><label>Amount</label><input id="x_amount" type="number" step="0.01" placeholder="0.00" value="' + (editing?editing.amount:'') + '" /></div>' +
+        '<div class="field"><label>Day of month</label><input id="x_day" type="number" min="1" max="31" placeholder="1-31" value="' + (editing?editing.day:todayDate.getDate()) + '" /></div>' +
+      '</div>' +
+      '<div class="field"><label>Who paid / owes it</label><select id="x_payer">' + peopleOptionsHtml(editing?editing.payerId:null) + '</select></div>' +
+      '<div class="field"><label>Note (optional)</label><textarea id="x_note" placeholder="any extra context">' + (editing&&editing.note?editing.note:'') + '</textarea></div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="x_cancel">Cancel</button>' +
+        '<button class="btn-primary" id="x_save">' + (editing?'Save changes':'Add expense') + '</button>' +
+      '</div>' +
+      (editing ? '<button class="btn-danger" id="x_delete" style="width:100%;margin-top:10px;">Delete expense</button>' : '') +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  document.getElementById('x_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+
+  if(document.getElementById('x_delete')){
+    document.getElementById('x_delete').onclick = function(){
+      overlay.remove();
+      deleteItem('extra', extraId);
+    };
+  }
+
+  document.getElementById('x_save').onclick = function(){
+    var name = document.getElementById('x_name').value.trim();
+    var amount = parseFloat(document.getElementById('x_amount').value);
+    var day = parseInt(document.getElementById('x_day').value, 10);
+    var payerId = document.getElementById('x_payer').value;
+    var note = document.getElementById('x_note').value.trim();
+
+    if(!name || isNaN(amount) || isNaN(day) || day<1 || day>31 || !payerId || payerId==='__new__'){
+      alert('Please fill in what it was for, an amount, a day (1-31), and who it belongs to.');
+      return;
+    }
+
+    if(editing){
+      editing.name = name; editing.amount = amount; editing.day = day; editing.payerId = payerId; editing.note = note;
+    } else {
+      data.extras.push({ id: uid(), name: name, amount: amount, day: day, payerId: payerId, note: note, monthKey: monthKey, paid:false, createdAt: new Date().toISOString() });
+    }
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
+  };
+}
+
+function openSettings(){
+  var rows = data.people.map(function(p){
+    var c = colorFor(p);
+    return '<div class="person-row"><span class="dot" style="background:' + c.main + '"></span>' +
+      '<input data-pid="' + p.id + '" value="' + p.name + '" /></div>';
+  }).join('');
+
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>Settings</h2>' +
+      '<div class="settings-row"><span>Dark mode</span>' +
+        '<label class="switch"><input type="checkbox" id="themeToggle" ' + (getTheme()==='dark'?'checked':'') + ' /><span class="slider"></span></label>' +
+      '</div>' +
+      '<label style="font-size:12.5px;font-weight:600;color:var(--ink-soft);">People in this ledger</label>' +
+      '<div style="margin:10px 0;">' + rows + '</div>' +
+      '<p class="notice">Renaming here updates the name for both of you. Use the same name your partner already entered if you want to merge into one person.</p>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="s_cancel">Close</button>' +
+        '<button class="btn-primary" id="s_save">Save</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.getElementById('themeToggle').onchange = function(e){ setTheme(e.target.checked ? 'dark' : 'light'); };
+  document.getElementById('s_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  document.getElementById('s_save').onclick = function(){
+    overlay.querySelectorAll('input[data-pid]').forEach(function(input){
+      var p = findPerson(data, input.getAttribute('data-pid'));
+      if(p && input.value.trim()) p.name = input.value.trim();
+    });
+    saveData(data).then(function(ok){ storageOk = ok; overlay.remove(); render(); });
+  };
+}
+
+document.getElementById('gearBtn').addEventListener('click', openSettings);
+
+async function start(){
+  myPersonId = loadMe();
+  if(!firebaseReady){ render(); return; }
+  data = await loadInitial();
+  enforceTwoPeople(data);
+  await saveData(data);
+  await ensureIdentity();
+  render();
+  subscribeLive(function(d){
+    if(d){ data = d; storageOk = true; } else { storageOk = false; }
+    render();
+  });
+}
+start();
+</script>
+</body>
+</html>
