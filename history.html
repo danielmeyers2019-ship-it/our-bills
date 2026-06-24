@@ -6,7 +6,7 @@
 <title>Bill History</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 <div class="gear" id="gearBtn" title="Settings">⚙</div>
@@ -20,7 +20,7 @@ import {
   monthKeyOf, dueDateInMonth, paymentKey, loadMe, uid,
   loadInitial, saveData, subscribeLive, extrasForMonth, billCardHtml,
   getTheme, applyTheme, setTheme, enforceTwoPeople
-} from './ledger-core.js?v=2';
+} from './ledger-core.js?v=3';
 
 applyTheme(getTheme());
 
@@ -106,7 +106,7 @@ function render(){
   var items = visibleItems();
 
   var html = '';
-  html += '<div class="page-nav"><a href="index.html">Ledger</a><a class="active" href="history.html">History</a></div>';
+  html += '<div class="page-nav"><a href="index.html">Ledger</a><a class="active" href="history.html">History</a><a href="groceries.html">Groceries</a></div>';
   html += '<p class="eyebrow">BILL HISTORY</p>';
   html += '<h1>Past months</h1>';
   html += '<p class="sub">Browse what was paid, and backfill anything missing.</p>';

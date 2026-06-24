@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Groceries</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+<div class="gear" id="gearBtn" title="Settings">⚙</div>
+<div class="wrap" id="app">
+  <div class="loading">Loading groceries…</div>
+</div>
+
+<script type="module">
+import {
+  firebaseReady, uid, colorFor, findPerson, loadMe,
+  loadInitial, saveData, enforceTwoPeople,
+  loadGroceries, saveGroceries, subscribeGroceries,
+  getTheme, applyTheme, setTheme
+} from './ledger-core.js?v=3';
+
+applyTheme(getTheme());
+
+var ledgerData = { people: [] };
+var groceryData = { items: [] };
+var storageOk = true;
+var myPersonId = null;
+
+var app = document.getElementById('app');
+
+function renderSetupNeeded(){
+  app.innerHTML =
+    '<div style="padding-top:50px;">' +
+      '<p class="eyebrow">SETUP NEEDED</p>' +
+      '<h1>Connect your Firebase project</h1>' +
+      '<p class="sub">Open ledger-core.js and paste your Firebase config values in, then reload.</p>' +
+    '</div>';
+}
+
+function sortedItems(){
+  var items = groceryData.items.slice();
+  items.sort(function(a,b){
+    if(a.checked !== b.checked) return a.checked ? 1 : -1;
+    return (a.addedAt||'').localeCompare(b.addedAt||'');
+  });
+  return items;
+}
+
+function render(){
+  if(!firebaseReady){ renderSetupNeeded(); return; }
+
+  var items = sortedItems();
+  var checkedCount = groceryData.items.filter(function(i){return i.checked;}).length;
+
+  var html = '';
+  html += '<div class="page-nav"><a href="index.html">Ledger</a><a href="history.html">History</a><a class="active" href="groceries.html">Groceries</a></div>';
+  html += '<p class="eyebrow">GROCERY LIST</p>';
+  html += '<h1>Groceries</h1>';
+  html += '<p class="sub"><span class="live-dot"></span>Synced live' +
+           (myPersonId && findPerson(ledgerData, myPersonId) ? ' &middot; Signed in as ' + findPerson(ledgerData, myPersonId).name : '') +
+           '</p>';
+
+  html += '<div class="add-row">' +
+    '<input id="newItemInput" placeholder="Add an item…" />' +
+    '<button id="addItemBtn">Add</button>' +
+  '</div>';
+
+  if(!items.length){
+    html += '<div class="empty">List\'s empty — add something you need from the store.</div>';
+  } else {
+    html += '<div class="grocery-list">';
+    items.forEach(function(it){
+      var person = findPerson(ledgerData, it.addedBy);
+      html += '<div class="grocery-item">' +
+        '<button class="grocery-check ' + (it.checked?'checked':'') + '" data-action="toggle" data-id="' + it.id + '">✓</button>' +
+        '<div class="grocery-info">' +
+          '<span class="grocery-name ' + (it.checked?'checked':'') + '">' + it.name + '</span>' +
+          (person ? '<span class="grocery-meta">Added by ' + person.name + '</span>' : '') +
+        '</div>' +
+        '<button class="grocery-del" data-action="delete" data-id="' + it.id + '">✕</button>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  if(checkedCount > 0){
+    html += '<div style="margin-top:14px;"><button class="clear-checked-btn" id="clearCheckedBtn">Clear ' + checkedCount + ' checked item' + (checkedCount===1?'':'s') + '</button></div>';
+  }
+
+  if(!storageOk){
+    html += '<div class="notice">Changes aren\'t syncing right now — check your connection and reload.</div>';
+  }
+
+  app.innerHTML = html;
+  bindEvents();
+}
+
+function bindEvents(){
+  var addBtn = document.getElementById('addItemBtn');
+  var input = document.getElementById('newItemInput');
+  addBtn.onclick = addItem;
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter') addItem(); });
+
+  document.querySelectorAll('[data-action="toggle"]').forEach(function(btn){
+    btn.onclick = function(){ toggleItem(btn.getAttribute('data-id')); };
+  });
+  document.querySelectorAll('[data-action="delete"]').forEach(function(btn){
+    btn.onclick = function(){ deleteItem(btn.getAttribute('data-id')); };
+  });
+  var clearBtn = document.getElementById('clearCheckedBtn');
+  if(clearBtn) clearBtn.onclick = clearChecked;
+}
+
+function addItem(){
+  var input = document.getElementById('newItemInput');
+  var name = input.value.trim();
+  if(!name) return;
+  groceryData.items.push({ id: uid(), name: name, checked:false, addedBy: myPersonId, addedAt: new Date().toISOString() });
+  saveGroceries(groceryData).then(function(ok){ storageOk = ok; render(); });
+}
+
+function toggleItem(id){
+  var item = groceryData.items.find(function(i){return i.id===id;});
+  if(item) item.checked = !item.checked;
+  saveGroceries(groceryData).then(function(ok){ storageOk = ok; render(); });
+}
+
+function deleteItem(id){
+  groceryData.items = groceryData.items.filter(function(i){ return i.id !== id; });
+  saveGroceries(groceryData).then(function(ok){ storageOk = ok; render(); });
+}
+
+function clearChecked(){
+  groceryData.items = groceryData.items.filter(function(i){ return !i.checked; });
+  saveGroceries(groceryData).then(function(ok){ storageOk = ok; render(); });
+}
+
+function openSettings(){
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML =
+    '<div class="sheet">' +
+      '<h2>Settings</h2>' +
+      '<div class="settings-row"><span>Dark mode</span>' +
+        '<label class="switch"><input type="checkbox" id="themeToggle" ' + (getTheme()==='dark'?'checked':'') + ' /><span class="slider"></span></label>' +
+      '</div>' +
+      '<div class="sheet-actions">' +
+        '<button class="btn-secondary" id="s_cancel" style="flex:1;">Close</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.getElementById('themeToggle').onchange = function(e){ setTheme(e.target.checked ? 'dark' : 'light'); };
+  document.getElementById('s_cancel').onclick = function(){ overlay.remove(); };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+}
+document.getElementById('gearBtn').addEventListener('click', openSettings);
+
+async function start(){
+  myPersonId = loadMe();
+  if(!firebaseReady){ render(); return; }
+  ledgerData = await loadInitial();
+  enforceTwoPeople(ledgerData);
+  await saveData(ledgerData);
+  groceryData = await loadGroceries();
+  render();
+  subscribeGroceries(function(d){
+    if(d){ groceryData = d; storageOk = true; } else { storageOk = false; }
+    render();
+  });
+}
+start();
+</script>
+</body>
+</html>

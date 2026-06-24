@@ -14,11 +14,12 @@ const firebaseConfig = {
 };
 
 export const firebaseReady = firebaseConfig.apiKey !== "YOUR_API_KEY";
-let db, docRef;
+let db, docRef, groceryDocRef;
 if (firebaseReady) {
   const fbApp = initializeApp(firebaseConfig);
   db = getFirestore(fbApp);
   docRef = doc(db, "ledger", "household");
+  groceryDocRef = doc(db, "groceries", "list");
 }
 
 export const ME_KEY = 'ledger-my-person-id';
@@ -172,6 +173,43 @@ export function subscribeLive(callback){
       if(!d.people) d.people = [];
       if(!d.bills) d.bills = [];
       if(!d.extras) d.extras = [];
+      callback(d);
+    }
+  }, function(){ callback(null); });
+}
+
+export async function loadGroceries(){
+  try{
+    var snap = await getDoc(groceryDocRef);
+    if(snap.exists()){
+      var d = snap.data();
+      if(!d.items) d.items = [];
+      return d;
+    } else {
+      var fresh = { items: [] };
+      await setDoc(groceryDocRef, fresh);
+      return fresh;
+    }
+  }catch(e){
+    return { items: [] };
+  }
+}
+
+export async function saveGroceries(data){
+  try{
+    await setDoc(groceryDocRef, data);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+export function subscribeGroceries(callback){
+  if(!firebaseReady) return;
+  onSnapshot(groceryDocRef, function(snap){
+    if(snap.exists()){
+      var d = snap.data();
+      if(!d.items) d.items = [];
       callback(d);
     }
   }, function(){ callback(null); });
