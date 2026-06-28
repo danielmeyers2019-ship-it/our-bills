@@ -153,7 +153,7 @@ function render(){
       var s = summaryFor(p);
       html += '<div class="tally-chip">' +
         '<div class="tally-name"><span class="dot" style="background:'+c.main+'"></span>' + p.name + '</div>' +
-        '<div class="tally-amt">' + fmtMoney(s.paid) + ' <span class="of">of ' + fmtMoney(s.assigned) + ' paid</span></div>' +
+        '<div class="tally-amt">' + fmtMoney(s.assigned - s.paid) + ' <span class="of">left of ' + fmtMoney(s.assigned) + '</span></div>' +
       '</div>';
     });
     html += '</div>';
